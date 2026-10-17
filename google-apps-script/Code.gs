@@ -352,3 +352,188 @@ function sendPatientConfirmationEmail(data, patientEmail) {
     Logger.log("Failed to send patient confirmation email: " + err.toString());
   }
 }
+
+// ============================================================================
+// AUTOMATED STATUS CHANGE TRIGGER (Method 3)
+// Sends email to patient when Status is changed to "Confirmed" in the Google Sheet
+// ============================================================================
+
+/**
+ * Triggered automatically whenever a cell in the Google Sheet is edited.
+ * If Column 9 (Status) is changed to "Confirmed", it sends the patient an official confirmation email.
+ */
+function handleSheetEdit(e) {
+  if (!e || !e.range) return;
+
+  var sheet = e.range.getSheet();
+  var sheetName = sheet.getName();
+  if (sheetName !== (CONFIG.SHEET_NAME || "Appointments")) return;
+
+  var editedCol = e.range.getColumn();
+  var editedRow = e.range.getRow();
+
+  // Ignore edits to the header row (Row 1)
+  if (editedRow <= 1) return;
+
+  // Check if edit is in Column 9 (Status column)
+  if (editedCol === 9) {
+    var newStatus = String(e.value || e.range.getValue() || "").trim();
+
+    // Check if status is set to "Confirmed" (or starts with Confirmed)
+    if (newStatus.toLowerCase().indexOf("confirm") !== -1) {
+      var rowValues = sheet.getRange(editedRow, 1, 1, 10).getValues()[0];
+
+      var refCode = rowValues[1];
+      var patientName = rowValues[2];
+      var patientPhone = rowValues[3];
+      var patientEmail = String(rowValues[4] || "").trim();
+      var apptDate = rowValues[5];
+      var treatment = rowValues[6];
+      var currentNotes = String(rowValues[9] || "").trim();
+
+      // Only send if patient provided a valid email
+      if (!patientEmail || patientEmail.indexOf("@") === -1) {
+        Logger.log("No valid email for row " + editedRow + " (" + patientName + ")");
+        return;
+      }
+
+      // Avoid sending duplicate confirmation emails if already marked sent
+      if (currentNotes.indexOf("Confirmation Email Sent") !== -1) {
+        Logger.log("Confirmation email already sent previously for " + refCode);
+        return;
+      }
+
+      // Send the official confirmed appointment email
+      var sent = sendPatientOfficialConfirmationEmail({
+        refCode: refCode,
+        name: patientName,
+        date: apptDate,
+        treatment: treatment,
+        notes: currentNotes
+      }, patientEmail);
+
+      // Record in Admin Notes column (Column 10) that confirmation email was sent
+      if (sent) {
+        var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "dd-MMM hh:mm a");
+        var updatedNote = (currentNotes ? currentNotes + " | " : "") + "✅ Confirmation Email Sent (" + stamp + ")";
+        sheet.getRange(editedRow, 10).setValue(updatedNote);
+      }
+    }
+  }
+}
+
+/**
+ * Sends official appointment confirmed email with appointment time & instructions
+ */
+function sendPatientOfficialConfirmationEmail(data, patientEmail) {
+  var subject = "✅ Confirmed: Your Orthopaedic Consultation at Dharson Hospital [Ref: " + data.refCode + "]";
+
+  var adminNoteSection = "";
+  if (data.notes && data.notes.trim() !== "") {
+    adminNoteSection = `
+      <div style="background-color: #FEF3C7; border-left: 4px solid #D97706; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 13px; color: #92400E;">
+        <strong>Hospital Instructions / Schedule Notes:</strong><br>
+        ${data.notes}
+      </div>
+    `;
+  }
+
+  var htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; color: #1E293B;">
+      <div style="background-color: #0F2856; color: #ffffff; padding: 24px; text-align: center;">
+        <h2 style="margin: 0; font-size: 22px; font-weight: bold;">Dharson Hospital</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #93C5FD; text-transform: uppercase; letter-spacing: 1px;">Orthopaedics & Bone Joint Care • Namakkal</p>
+      </div>
+
+      <div style="padding: 24px; background-color: #ffffff;">
+        <div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+          <span style="display: inline-block; background-color: #059669; color: #ffffff; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Status: Appointment Confirmed</span>
+          <h3 style="color: #065F46; margin: 6px 0 0 0; font-size: 18px;">Your Consultation Slot is Confirmed</h3>
+        </div>
+
+        <p style="color: #475569; line-height: 1.6;">
+          Dear <strong>${data.name}</strong>,<br>
+          We are pleased to inform you that your orthopaedic consultation at <strong>Dharson Hospital</strong> has been reviewed and officially confirmed.
+        </p>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 20px 0; background-color: #F8FAFC; border-radius: 8px; overflow: hidden;">
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0; color: #64748B; width: 140px; font-weight: 600;">Booking Ref:</td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0; font-weight: bold; color: #0F2856;">${data.refCode}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0; color: #64748B; font-weight: 600;">Confirmed Date:</td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0; font-weight: bold; color: #059669; font-size: 15px;">${data.date}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0; color: #64748B; font-weight: 600;">Consultation:</td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #E2E8F0;">${data.treatment}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; color: #64748B; font-weight: 600;">Location:</td>
+            <td style="padding: 12px 16px; font-weight: 600; color: #0F2856;">Dharson Hospital, Namakkal, Tamil Nadu</td>
+          </tr>
+        </table>
+
+        ${adminNoteSection}
+
+        <div style="background-color: #F1F5F9; border-radius: 8px; padding: 14px 16px; margin: 20px 0; font-size: 13px; color: #475569; line-height: 1.5;">
+          <strong>📋 What to bring to your consultation:</strong>
+          <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+            <li>Any existing bone/joint X-rays, MRI scans, or CT reports.</li>
+            <li>List of current medications or previous medical prescriptions.</li>
+            <li>Valid identification document.</li>
+          </ul>
+        </div>
+
+        <p style="color: #64748B; font-size: 13px; line-height: 1.6;">
+          Need to reschedule or have questions before arriving? Call our hospital helpline directly at <strong>${CONFIG.HOSPITAL_PHONE}</strong>.
+        </p>
+
+        <div style="margin-top: 24px; text-align: center;">
+          <a href="https://www.google.com/maps/search/?api=1&query=Namakkal+Tamil+Nadu" target="_blank" style="display: inline-block; background-color: #0F2856; color: #ffffff; padding: 12px 24px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size: 13px;">
+            📍 Get Driving Directions to Hospital
+          </a>
+        </div>
+      </div>
+
+      <div style="background-color: #F8FAFC; padding: 14px; text-align: center; font-size: 12px; color: #94A3B8; border-top: 1px solid #E2E8F0;">
+        Dharson Hospital • Orthopaedic & Bone Joint Care • Namakkal, Tamil Nadu
+      </div>
+    </div>
+  `;
+
+  try {
+    MailApp.sendEmail({
+      to: patientEmail,
+      subject: subject,
+      htmlBody: htmlBody
+    });
+    Logger.log("Official confirmation email sent to " + patientEmail);
+    return true;
+  } catch (err) {
+    Logger.log("Failed to send official confirmation email: " + err.toString());
+    return false;
+  }
+}
+
+/**
+ * One-Click Setup: Automatically installs the edit trigger for your Google Sheet.
+ * (Select this function and click "Run" in the toolbar above).
+ */
+function installEditTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "handleSheetEdit") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  var ss = getOrCreateAppointmentsSheet().getParent();
+  ScriptApp.newTrigger("handleSheetEdit")
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+
+  Logger.log("✅ Trigger successfully installed for spreadsheet: " + ss.getName());
+}
