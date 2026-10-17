@@ -44,7 +44,7 @@ const HOSPITAL_CONFIG = {
   api: {
     // Paste your deployed Google Apps Script Web App URL here after deploying:
     // e.g. "https://script.google.com/macros/s/AKfycbx.../exec"
-    appointmentWebhookUrl: "", 
+    appointmentWebhookUrl: "https://script.google.com/macros/s/AKfycbwaVHN6WhnKowXe0yiOQLsEDg3zn5mcnIXZ43_H9tj6lZNwrAGcPjAJ90kAkKQRwwA1/exec",
   },
 
   // Trust & Care Highlights

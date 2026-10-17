@@ -165,18 +165,23 @@ function jsonResponse(obj) {
  */
 function getOrCreateAppointmentsSheet() {
   var ss;
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var savedSheetId = scriptProperties.getProperty("APPOINTMENTS_SPREADSHEET_ID");
   
   if (CONFIG.SPREADSHEET_ID && CONFIG.SPREADSHEET_ID.trim() !== "") {
     ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID.trim());
-  } else {
-    // Look for existing spreadsheet with default name
-    var files = DriveApp.getFilesByName("Dharson Hospital - Patient Appointments");
-    if (files.hasNext()) {
-      ss = SpreadsheetApp.open(files.next());
-    } else {
-      // Create new spreadsheet
-      ss = SpreadsheetApp.create("Dharson Hospital - Patient Appointments");
+  } else if (savedSheetId) {
+    try {
+      ss = SpreadsheetApp.openById(savedSheetId);
+    } catch (e) {
+      ss = null;
     }
+  }
+
+  if (!ss) {
+    // Create new spreadsheet without requiring DriveApp permissions
+    ss = SpreadsheetApp.create("Dharson Hospital - Patient Appointments");
+    scriptProperties.setProperty("APPOINTMENTS_SPREADSHEET_ID", ss.getId());
   }
 
   var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
