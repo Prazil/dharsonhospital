@@ -164,29 +164,62 @@ function jsonResponse(obj) {
  * Retrieves the Google Sheet or automatically creates and styles one
  */
 function getOrCreateAppointmentsSheet() {
-  var ss;
-  var scriptProperties = PropertiesService.getScriptProperties();
-  var savedSheetId = scriptProperties.getProperty("APPOINTMENTS_SPREADSHEET_ID");
-  
-  if (CONFIG.SPREADSHEET_ID && CONFIG.SPREADSHEET_ID.trim() !== "") {
-    ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID.trim());
-  } else if (savedSheetId) {
+  var ss = null;
+
+  // 1. Try active spreadsheet if script is attached directly to a Sheet
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  } catch (e) {
+    ss = null;
+  }
+
+  // 2. Safely parse SPREADSHEET_ID if provided (supports raw ID or full Google Sheet URL)
+  var rawId = "";
+  if (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.SPREADSHEET_ID) {
+    rawId = String(CONFIG.SPREADSHEET_ID).trim();
+  }
+
+  // Extract ID if user pasted full URL (e.g. https://docs.google.com/spreadsheets/d/XXXX/edit)
+  var match = rawId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  var targetId = match ? match[1] : rawId;
+
+  if (targetId && targetId !== "" && targetId.length > 5) {
     try {
-      ss = SpreadsheetApp.openById(savedSheetId);
-    } catch (e) {
+      ss = SpreadsheetApp.openById(targetId);
+    } catch (openErr) {
+      Logger.log("Could not open sheet with ID " + targetId + ": " + openErr.toString());
       ss = null;
     }
   }
 
+  // 3. Check Script Properties cache
   if (!ss) {
-    // Create new spreadsheet without requiring DriveApp permissions
-    ss = SpreadsheetApp.create("Dharson Hospital - Patient Appointments");
-    scriptProperties.setProperty("APPOINTMENTS_SPREADSHEET_ID", ss.getId());
+    try {
+      var scriptProperties = PropertiesService.getScriptProperties();
+      var savedSheetId = scriptProperties.getProperty("APPOINTMENTS_SPREADSHEET_ID");
+      if (savedSheetId) {
+        ss = SpreadsheetApp.openById(savedSheetId);
+      }
+    } catch (propErr) {
+      ss = null;
+    }
   }
 
-  var sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+  // 4. Create new spreadsheet if none exists
+  if (!ss) {
+    try {
+      ss = SpreadsheetApp.create("Dharson Hospital - Patient Appointments");
+      PropertiesService.getScriptProperties().setProperty("APPOINTMENTS_SPREADSHEET_ID", ss.getId());
+    } catch (createErr) {
+      Logger.log("Failed to create spreadsheet: " + createErr.toString());
+      throw new Error("Unable to create Google Sheet. Please check permissions: " + createErr.message);
+    }
+  }
+
+  var sheetName = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.SHEET_NAME) ? String(CONFIG.SHEET_NAME) : "Appointments";
+  var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.SHEET_NAME);
+    sheet = ss.insertSheet(sheetName);
   }
 
   // Create header row if empty
