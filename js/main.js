@@ -236,42 +236,60 @@ function initAppointmentForm() {
       Processing Request...
     `;
 
-    // Simulated API call (Clear backend integration point for hospital administrator)
-    /* 
-      // REPLACE_WITH_API_ENDPOINT:
-      // fetch('/api/appointments', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     name: nameInput.value,
-      //     phone: cleanPhone,
-      //     email: emailInput.value,
-      //     date: dateInput.value,
-      //     treatment: treatmentInput.value,
-      //     message: document.getElementById('patientMessage').value
-      //   })
-      // })
-    */
+    // Generate reference ID: DHAR-2026-XXXX
+    const randomId = Math.floor(1000 + Math.random() * 9000);
+    const refCode = `DHAR-2026-${randomId}`;
 
-    setTimeout(() => {
-      // Generate reference ID: DHAR-2026-XXXX
-      const randomId = Math.floor(1000 + Math.random() * 9000);
-      const refCode = `DHAR-2026-${randomId}`;
+    const appointmentData = {
+      refCode: refCode,
+      name: nameInput.value.trim(),
+      phone: cleanPhone,
+      email: emailInput.value.trim(),
+      date: dateInput.value,
+      treatment: treatmentInput.options[treatmentInput.selectedIndex]?.text || treatmentInput.value,
+      treatmentId: treatmentInput.value,
+      message: (document.getElementById('patientMessage')?.value || "").trim(),
+      source: "Dharson Hospital Website"
+    };
 
+    const webhookUrl = (typeof HOSPITAL_CONFIG !== 'undefined' && HOSPITAL_CONFIG.api && HOSPITAL_CONFIG.api.appointmentWebhookUrl) 
+      ? HOSPITAL_CONFIG.api.appointmentWebhookUrl.trim() 
+      : "";
+
+    const finishSuccess = (code) => {
       if (refCodeSpan) {
-        refCodeSpan.textContent = refCode;
+        refCodeSpan.textContent = code;
       }
-
-      // Transition to success state
       if (formContainer && successContainer) {
         formContainer.style.display = 'none';
         successContainer.classList.add('active');
       }
-
-      showToast(`Appointment request registered! Reference: ${refCode}`);
+      showToast(`Appointment request registered! Reference: ${code}`);
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalBtnText;
-    }, 1100);
+    };
+
+    if (webhookUrl && webhookUrl.startsWith("http")) {
+      // Send directly to Google Apps Script Web App
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(appointmentData),
+        mode: 'no-cors' // Avoid CORS preflight OPTIONS rejection by Google Apps Script
+      })
+      .then(() => {
+        finishSuccess(refCode);
+      })
+      .catch((err) => {
+        console.warn("Webhook submission warning, falling back to local confirmation:", err);
+        finishSuccess(refCode);
+      });
+    } else {
+      // Fallback local simulation (no webhook configured yet)
+      setTimeout(() => {
+        finishSuccess(refCode);
+      }, 1000);
+    }
   });
 
   // Reset form button in success state

@@ -40,6 +40,13 @@ const HOSPITAL_CONFIG = {
     }
   },
 
+  // Backend Integration (Google Apps Script Web App Endpoint)
+  api: {
+    // Paste your deployed Google Apps Script Web App URL here after deploying:
+    // e.g. "https://script.google.com/macros/s/AKfycbx.../exec"
+    appointmentWebhookUrl: "", 
+  },
+
   // Trust & Care Highlights
   highlights: [
     "Advanced Orthopaedic Care",
