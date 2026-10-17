@@ -18,7 +18,7 @@ const CONFIG = {
   // 1. Open a new tab and go to: https://sheets.new
   // 2. Name your sheet "Dharson Hospital Appointments"
   // 3. Copy the URL from your browser address bar and paste it below:
-  SPREADSHEET_URL: "", 
+  SPREADSHEET_URL: "https://docs.google.com/spreadsheets/d/1gew8aBMAtI579FWf9496KZ1Cb3RQrwj7qYD81LYTDyE/edit?gid=0#gid=0", 
 
   SHEET_NAME: "Appointments",
 
