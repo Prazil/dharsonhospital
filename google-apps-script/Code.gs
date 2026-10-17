@@ -3,7 +3,7 @@
  * Speciality: Orthopaedics / Bone & Joint Care
  * Location: Namakkal, Tamil Nadu, India
  * 
- * Paste this entire code into your Apps Script Project editor at:
+ * Paste this code into your Apps Script Project editor at:
  * https://script.google.com/u/0/home/projects/1cfEUSpp7HJl6r8gryFUaiUECZcfwCbFExWZl1pphhoe3oQNBXJ-e2hmm/edit
  */
 
@@ -14,20 +14,22 @@ const CONFIG = {
   HOSPITAL_NAME: "Dharson Hospital",
   LOCATION: "Namakkal, Tamil Nadu",
   
-  // OPTIONAL: Specify an existing Google Sheet ID here (from sheet URL).
-  // Leave empty ("") to automatically create a new sheet named "Dharson Hospital - Patient Appointments"
-  SPREADSHEET_ID: "", 
+  // 👉 PASTE YOUR GOOGLE SHEET URL HERE:
+  // 1. Open a new tab and go to: https://sheets.new
+  // 2. Name your sheet "Dharson Hospital Appointments"
+  // 3. Copy the URL from your browser address bar and paste it below:
+  SPREADSHEET_URL: "", 
 
   SHEET_NAME: "Appointments",
 
   // Email address to receive instant appointment notifications
-  // (e.g. hospital reception or coordinator email). Defaults to script owner.
-  NOTIFICATION_EMAIL: "", // Leave blank to send to your Google account email
+  // Leave blank ("") to send to your logged-in Google account email
+  NOTIFICATION_EMAIL: "", 
 
   // Send an automated confirmation receipt to the patient if email is provided
   SEND_PATIENT_CONFIRMATION: true,
 
-  // Hospital phone number for patient emails
+  // Hospital phone number displayed in patient emails
   HOSPITAL_PHONE: "+91 XXXXX XXXXX"
 };
 
@@ -121,6 +123,7 @@ function doGet(e) {
     speciality: "Orthopaedics & Bone Joint Care",
     location: CONFIG.LOCATION,
     service: "Appointment Booking Webhook",
+    hasSpreadsheetUrl: Boolean(CONFIG.SPREADSHEET_URL && CONFIG.SPREADSHEET_URL.trim() !== ""),
     serverTime: Utilities.formatDate(new Date(), "Asia/Kolkata", "dd-MMM-yyyy hh:mm:ss a")
   });
 }
@@ -129,9 +132,6 @@ function doGet(e) {
 // HELPER FUNCTIONS
 // ============================================================================
 
-/**
- * Parses incoming POST data (supports JSON text, FormData, and URL-encoded parameters)
- */
 function parsePayload(e) {
   var data = {};
   if (!e) return data;
@@ -140,7 +140,6 @@ function parsePayload(e) {
     try {
       data = JSON.parse(e.postData.contents);
     } catch (jsonErr) {
-      // If not JSON, check parameters
       if (e.parameter) {
         data = e.parameter;
       }
@@ -152,71 +151,29 @@ function parsePayload(e) {
   return data;
 }
 
-/**
- * Generates JSON text output for CORS-friendly responses
- */
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
- * Retrieves the Google Sheet or automatically creates and styles one
+ * Opens your Google Sheet directly by URL and formats the table
  */
 function getOrCreateAppointmentsSheet() {
-  var ss = null;
+  var url = String(CONFIG.SPREADSHEET_URL || "").trim();
+  
+  if (!url || url === "" || url.indexOf("docs.google.com/spreadsheets") === -1) {
+    throw new Error("Missing SPREADSHEET_URL. Please open https://sheets.new, create a sheet, copy its browser URL, and paste it into CONFIG.SPREADSHEET_URL in Code.gs.");
+  }
 
-  // 1. Try active spreadsheet if script is attached directly to a Sheet
+  var ss;
   try {
-    ss = SpreadsheetApp.getActiveSpreadsheet();
-  } catch (e) {
-    ss = null;
+    ss = SpreadsheetApp.openByUrl(url);
+  } catch (err) {
+    throw new Error("Unable to open Google Sheet at the provided URL. Please verify the URL and ensure your Google account has edit access: " + err.message);
   }
 
-  // 2. Safely parse SPREADSHEET_ID if provided (supports raw ID or full Google Sheet URL)
-  var rawId = "";
-  if (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.SPREADSHEET_ID) {
-    rawId = String(CONFIG.SPREADSHEET_ID).trim();
-  }
-
-  // Extract ID if user pasted full URL (e.g. https://docs.google.com/spreadsheets/d/XXXX/edit)
-  var match = rawId.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  var targetId = match ? match[1] : rawId;
-
-  if (targetId && targetId !== "" && targetId.length > 5) {
-    try {
-      ss = SpreadsheetApp.openById(targetId);
-    } catch (openErr) {
-      Logger.log("Could not open sheet with ID " + targetId + ": " + openErr.toString());
-      ss = null;
-    }
-  }
-
-  // 3. Check Script Properties cache
-  if (!ss) {
-    try {
-      var scriptProperties = PropertiesService.getScriptProperties();
-      var savedSheetId = scriptProperties.getProperty("APPOINTMENTS_SPREADSHEET_ID");
-      if (savedSheetId) {
-        ss = SpreadsheetApp.openById(savedSheetId);
-      }
-    } catch (propErr) {
-      ss = null;
-    }
-  }
-
-  // 4. Create new spreadsheet if none exists
-  if (!ss) {
-    try {
-      ss = SpreadsheetApp.create("Dharson Hospital - Patient Appointments");
-      PropertiesService.getScriptProperties().setProperty("APPOINTMENTS_SPREADSHEET_ID", ss.getId());
-    } catch (createErr) {
-      Logger.log("Failed to create spreadsheet: " + createErr.toString());
-      throw new Error("Unable to create Google Sheet. Please check permissions: " + createErr.message);
-    }
-  }
-
-  var sheetName = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.SHEET_NAME) ? String(CONFIG.SHEET_NAME) : "Appointments";
+  var sheetName = CONFIG.SHEET_NAME || "Appointments";
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
@@ -239,7 +196,6 @@ function getOrCreateAppointmentsSheet() {
 
     sheet.appendRow(headers);
 
-    // Style the header
     var headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange.setBackground("#0F2856"); // Dharson Navy Blue
     headerRange.setFontColor("#FFFFFF");
@@ -251,7 +207,6 @@ function getOrCreateAppointmentsSheet() {
     sheet.setRowHeight(1, 35);
     sheet.setFrozenRows(1);
 
-    // Set column widths
     sheet.setColumnWidth(1, 170); // Timestamp
     sheet.setColumnWidth(2, 140); // Ref Code
     sheet.setColumnWidth(3, 160); // Patient Name
@@ -267,9 +222,6 @@ function getOrCreateAppointmentsSheet() {
   return sheet;
 }
 
-/**
- * Sends rich HTML email notification to hospital staff
- */
 function sendHospitalNotificationEmail(data) {
   var recipient = CONFIG.NOTIFICATION_EMAIL || Session.getEffectiveUser().getEmail();
   var subject = "🏥 [Dharson Hospital] New Appointment: " + data.refCode + " - " + data.name;
@@ -344,9 +296,6 @@ function sendHospitalNotificationEmail(data) {
   }
 }
 
-/**
- * Sends a confirmation receipt email to the patient
- */
 function sendPatientConfirmationEmail(data, patientEmail) {
   var subject = "Your Appointment Request at Dharson Hospital [Ref: " + data.refCode + "]";
 
